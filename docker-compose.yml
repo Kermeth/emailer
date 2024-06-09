@@ -1,0 +1,12 @@
+version: "3.7"
+
+services:
+
+  emailer:
+    container_name: emailer
+    restart: always
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
