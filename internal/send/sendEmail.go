@@ -14,14 +14,13 @@ import (
 )
 
 type EmailRequest struct {
-	Api           string          `json:"api"`
-	To            []string        `json:"to"`
-	Cc            []string        `json:"cc"`
-	Bcc           []string        `json:"bcc"`
-	Subject       string          `json:"subject"`
-	Body          string          `json:"body"`
-	Attachments   []Attachment    `json:"attachments"`
-	Configuration json.RawMessage `json:"configuration"`
+	To            []string          `json:"to"`
+	Cc            []string          `json:"cc"`
+	Bcc           []string          `json:"bcc"`
+	Subject       string            `json:"subject"`
+	Body          string            `json:"body"`
+	Attachments   []Attachment      `json:"attachments"`
+	Configuration SMTPConfiguration `json:"configuration"`
 }
 
 type Attachment struct {
@@ -43,20 +42,11 @@ func Handler(writer http.ResponseWriter, request *http.Request) {
 		slog.Error("failed to decode email request", "Error", err)
 		return
 	}
-	switch emailRequest.Api {
-	case "smtp":
-		config, err := decodeSMTPConfiguration(emailRequest.Configuration)
-		if err != nil {
-			writer.WriteHeader(http.StatusBadRequest)
-			slog.Error("failed to decode smtp configuration", "Error", err)
-			return
-		}
-		err = config.sendEmail(emailRequest)
-		if err != nil {
-			writer.WriteHeader(http.StatusInternalServerError)
-			slog.Error("failed to send email", "Error:", err)
-			return
-		}
+	err = emailRequest.sendEmail()
+	if err != nil {
+		writer.WriteHeader(http.StatusInternalServerError)
+		slog.Error("failed to send email", "Error:", err)
+		return
 	}
 	slog.Info("Email sent")
 	writer.WriteHeader(http.StatusOK)
@@ -71,35 +61,30 @@ func decodeEmailRequest(request *http.Request) (*EmailRequest, error) {
 	return &emailRequest, nil
 }
 
-func decodeSMTPConfiguration(configuration json.RawMessage) (*SMTPConfiguration, error) {
-	var smtpConfig SMTPConfiguration
-	err := json.Unmarshal(configuration, &smtpConfig)
-	if err != nil {
-		return nil, err
-	}
-	return &smtpConfig, nil
-}
-
-func (config *SMTPConfiguration) sendEmail(request *EmailRequest) error {
-	auth := smtp.PlainAuth("", config.From, config.Password, config.Host)
-	server := config.Host + ":" + strconv.Itoa(config.Port)
-	err := smtp.SendMail(server, auth, config.From, request.To, request.toBytes())
+func (request *EmailRequest) sendEmail() error {
+	auth := smtp.PlainAuth(
+		"",
+		request.Configuration.From,
+		request.Configuration.Password,
+		request.Configuration.Host)
+	server := request.Configuration.Host + ":" + strconv.Itoa(request.Configuration.Port)
+	err := smtp.SendMail(server, auth, request.Configuration.From, request.To, request.toBytes())
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (e *EmailRequest) toBytes() []byte {
+func (request *EmailRequest) toBytes() []byte {
 	buffer := bytes.NewBuffer(nil)
-	withAttachments := len(e.Attachments) > 0
-	buffer.WriteString(fmt.Sprintf("Subject: %s\n", e.Subject))
-	buffer.WriteString(fmt.Sprintf("To: %s\n", strings.Join(e.To, ",")))
-	if len(e.Cc) > 0 {
-		buffer.WriteString(fmt.Sprintf("Cc: %s\n", strings.Join(e.Cc, ",")))
+	withAttachments := len(request.Attachments) > 0
+	buffer.WriteString(fmt.Sprintf("Subject: %s\n", request.Subject))
+	buffer.WriteString(fmt.Sprintf("To: %s\n", strings.Join(request.To, ",")))
+	if len(request.Cc) > 0 {
+		buffer.WriteString(fmt.Sprintf("Cc: %s\n", strings.Join(request.Cc, ",")))
 	}
-	if len(e.Bcc) > 0 {
-		buffer.WriteString(fmt.Sprintf("Bcc: %s\n", strings.Join(e.Bcc, ",")))
+	if len(request.Bcc) > 0 {
+		buffer.WriteString(fmt.Sprintf("Bcc: %s\n", strings.Join(request.Bcc, ",")))
 	}
 	buffer.WriteString("MIME-Version: 1.0\n")
 	writer := multipart.NewWriter(buffer)
@@ -110,10 +95,10 @@ func (e *EmailRequest) toBytes() []byte {
 	}
 	// Write HTML body
 	buffer.WriteString("Content-Type: text/html; charset=utf-8\n")
-	buffer.WriteString(e.Body)
+	buffer.WriteString(request.Body)
 	// Write attachments
 	if withAttachments {
-		for _, attachment := range e.Attachments {
+		for _, attachment := range request.Attachments {
 			v := []byte(attachment.Data)
 			buffer.WriteString(fmt.Sprintf("\n\n--%s\n", boundary))
 			buffer.WriteString(fmt.Sprintf("Content-Type: %s\n", http.DetectContentType(v)))
