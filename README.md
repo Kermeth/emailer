@@ -28,12 +28,11 @@ Small email service written in GO
 #### Send email
 
 ```http
-  POST /api/send
+  POST /smtp/send
 ```
 
 ```json
 {
-      "api": "smtp",
       "to": [
         "receiver@gmail.com"
       ],
@@ -55,11 +54,6 @@ Small email service written in GO
       }
 }
 ```
-
-| Parameter | Type     | Description                |
-| :-------- | :------- | :------------------------- |
-| `api` | `string` | **Required**. Email API to use [SMTP] |
-
 
 ## Deployment
 

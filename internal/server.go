@@ -15,5 +15,5 @@ func NewServer() http.Handler {
 
 func addRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", health.Handler)
-	mux.HandleFunc("POST /api/send", send.Handler)
+	mux.HandleFunc("POST /smtp/send", send.Handler)
 }
