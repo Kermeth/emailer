@@ -1,0 +1,22 @@
+name: Publish to Docker hub
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'main'
+      - 'releases/**'
+
+jobs:
+  publish_image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        run: echo "${{ secrets.DOCKER_HUB_TOKEN }}" | docker login -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and push Docker image
+        run: |
+          docker build -t ${{ github.actor }}/emailer:latest .
+          docker push ${{ github.actor }}/emailer:latest
