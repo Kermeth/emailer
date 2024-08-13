@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"mime/multipart"
 	"net/http"
+	"net/mail"
 	"net/smtp"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ type Attachment struct {
 type SMTPConfiguration struct {
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
+	Alias    string `json:"alias,omitempty"`
 	From     string `json:"from"`
 	Password string `json:"password"`
 }
@@ -78,6 +80,11 @@ func (request *EmailRequest) sendEmail() error {
 func (request *EmailRequest) toBytes() []byte {
 	buffer := bytes.NewBuffer(nil)
 	withAttachments := len(request.Attachments) > 0
+	from := mail.Address{
+		Name:    request.Configuration.Alias,
+		Address: request.Configuration.From,
+	}
+	buffer.WriteString(fmt.Sprintf("From: %s\n", from.String()))
 	buffer.WriteString(fmt.Sprintf("Subject: %s\n", request.Subject))
 	buffer.WriteString(fmt.Sprintf("To: %s\n", strings.Join(request.To, ",")))
 	if len(request.Cc) > 0 {
