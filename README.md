@@ -3,6 +3,12 @@
 
 Small email service written in GO
 
+## Run on Docker
+Image is already published on Docker Hub [here](https://hub.docker.com/r/kermeth/emailer)
+
+```bash 
+docker run kermeth/emailer
+```
 
 ## Roadmap
 
@@ -49,6 +55,7 @@ Small email service written in GO
       "configuration": {
         "host": "smtp.gmail.com",
         "port": 587,
+        "alias": "John Doe",
         "from": "sender@gmail.com",
         "password": "p4$$w0rd"
       }
@@ -63,4 +70,13 @@ To deploy this project run
   go build
   ./emailer
 ```
+
+## Changelog
+
+- 0.1.1
+  - Allow alias for sender
+- 0.1.0
+  - Initial Release
+  - SMTP Support
+  - Attachments Support
 
