@@ -3,6 +3,12 @@
 
 Small email service written in GO
 
+## Run on Docker
+Image is already published on Docker Hub [here](https://hub.docker.com/r/kermeth/emailer)
+
+```bash 
+docker run kermeth/emailer
+```
 
 ## Roadmap
 
