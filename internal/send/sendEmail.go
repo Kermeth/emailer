@@ -64,11 +64,15 @@ func decodeEmailRequest(request *http.Request) (*EmailRequest, error) {
 }
 
 func (request *EmailRequest) sendEmail() error {
+	host := request.Configuration.Host
 	auth := smtp.PlainAuth(
 		"",
 		request.Configuration.From,
 		request.Configuration.Password,
 		request.Configuration.Host)
+	if strings.Contains(host, "office365") {
+		auth = LoginAuth(request.Configuration.From, request.Configuration.Password)
+	}
 	server := request.Configuration.Host + ":" + strconv.Itoa(request.Configuration.Port)
 	err := smtp.SendMail(server, auth, request.Configuration.From, request.To, request.toBytes())
 	if err != nil {
@@ -84,24 +88,25 @@ func (request *EmailRequest) toBytes() []byte {
 		Name:    request.Configuration.Alias,
 		Address: request.Configuration.From,
 	}
-	buffer.WriteString(fmt.Sprintf("From: %s\n", from.String()))
-	buffer.WriteString(fmt.Sprintf("Subject: %s\n", request.Subject))
-	buffer.WriteString(fmt.Sprintf("To: %s\n", strings.Join(request.To, ",")))
+	buffer.WriteString(fmt.Sprintf("From: %s\r\n", from.String()))
+	buffer.WriteString(fmt.Sprintf("Subject: %s\r\n", request.Subject))
+	buffer.WriteString(fmt.Sprintf("To: %s\r\n", strings.Join(request.To, ",")))
 	if len(request.Cc) > 0 {
-		buffer.WriteString(fmt.Sprintf("Cc: %s\n", strings.Join(request.Cc, ",")))
+		buffer.WriteString(fmt.Sprintf("Cc: %s\r\n", strings.Join(request.Cc, ",")))
 	}
 	if len(request.Bcc) > 0 {
-		buffer.WriteString(fmt.Sprintf("Bcc: %s\n", strings.Join(request.Bcc, ",")))
+		buffer.WriteString(fmt.Sprintf("Bcc: %s\r\n", strings.Join(request.Bcc, ",")))
 	}
-	buffer.WriteString("MIME-Version: 1.0\n")
+	buffer.WriteString("MIME-Version: 1.0\r\n")
 	writer := multipart.NewWriter(buffer)
 	boundary := writer.Boundary()
 	if withAttachments {
-		buffer.WriteString(fmt.Sprintf("Content-Type: multipart/alternative; boundary=%s\n", boundary))
-		buffer.WriteString(fmt.Sprintf("--%s\n", boundary))
+		buffer.WriteString(fmt.Sprintf("Content-Type: multipart/alternative; boundary=%s\r\n", boundary))
+		buffer.WriteString(fmt.Sprintf("--%s\r\n", boundary))
 	}
 	// Write HTML body
-	buffer.WriteString("Content-Type: text/html; charset=utf-8\n")
+	buffer.WriteString("Content-Type: text/html; charset=utf-8\r\n")
+	buffer.WriteString("\r\n") // Empty line to separate headers from body RFC 822-style email
 	buffer.WriteString(request.Body)
 	// Write attachments
 	if withAttachments {
