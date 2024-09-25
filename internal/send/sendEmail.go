@@ -64,11 +64,15 @@ func decodeEmailRequest(request *http.Request) (*EmailRequest, error) {
 }
 
 func (request *EmailRequest) sendEmail() error {
+	host := request.Configuration.Host
 	auth := smtp.PlainAuth(
 		"",
 		request.Configuration.From,
 		request.Configuration.Password,
 		request.Configuration.Host)
+	if strings.Contains(host, "office365") {
+		auth = LoginAuth(request.Configuration.From, request.Configuration.Password)
+	}
 	server := request.Configuration.Host + ":" + strconv.Itoa(request.Configuration.Port)
 	err := smtp.SendMail(server, auth, request.Configuration.From, request.To, request.toBytes())
 	if err != nil {
