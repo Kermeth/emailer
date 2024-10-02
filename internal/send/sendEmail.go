@@ -30,12 +30,20 @@ type Attachment struct {
 }
 
 type SMTPConfiguration struct {
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Alias    string `json:"alias,omitempty"`
-	From     string `json:"from"`
-	Password string `json:"password"`
+	Host      string    `json:"host"`
+	Port      int       `json:"port"`
+	Alias     string    `json:"alias,omitempty"`
+	LoginType LoginType `json:"loginType,omitempty"`
+	From      string    `json:"from"`
+	Password  string    `json:"password"`
 }
+
+type LoginType string
+
+const (
+	Plain LoginType = "plain"
+	Login LoginType = "login"
+)
 
 func Handler(writer http.ResponseWriter, request *http.Request) {
 	emailRequest, err := decodeEmailRequest(request)
@@ -64,13 +72,13 @@ func decodeEmailRequest(request *http.Request) (*EmailRequest, error) {
 }
 
 func (request *EmailRequest) sendEmail() error {
-	host := request.Configuration.Host
 	auth := smtp.PlainAuth(
 		"",
 		request.Configuration.From,
 		request.Configuration.Password,
 		request.Configuration.Host)
-	if strings.Contains(host, "office365") {
+	if request.Configuration.LoginType == Login {
+		slog.Info("Using login auth")
 		auth = LoginAuth(request.Configuration.From, request.Configuration.Password)
 	}
 	server := request.Configuration.Host + ":" + strconv.Itoa(request.Configuration.Port)

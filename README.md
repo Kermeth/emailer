@@ -37,7 +37,7 @@ docker run kermeth/emailer
   POST /smtp/send
 ```
 
-```json
+```json lines
 {
       "to": [
         "receiver@gmail.com"
@@ -55,7 +55,8 @@ docker run kermeth/emailer
       "configuration": {
         "host": "smtp.gmail.com",
         "port": 587,
-        "alias": "John Doe",
+        "alias": "John Doe", // Optional
+        "loginType": "plain|login", // Optional (default: plain)
         "from": "sender@gmail.com",
         "password": "p4$$w0rd"
       }
