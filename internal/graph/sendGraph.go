@@ -86,11 +86,19 @@ func (request *Request) sendEmail() error {
 				"contentType": "HTML",
 				"content":     request.Body,
 			},
-			"toRecipients":  buildRecipients(request.To),
-			"ccRecipients":  buildRecipients(request.Cc),
-			"bccRecipients": buildRecipients(request.Bcc),
+			"toRecipients": buildRecipients(request.To),
 		},
 		"saveToSentItems": true,
+	}
+
+	// Add CC recipients if present
+	if len(request.Cc) > 0 {
+		message["message"].(map[string]interface{})["ccRecipients"] = buildRecipients(request.Cc)
+	}
+
+	// Add BCC recipients if present
+	if len(request.Bcc) > 0 {
+		message["message"].(map[string]interface{})["bccRecipients"] = buildRecipients(request.Bcc)
 	}
 
 	// Add attachments if present
@@ -104,10 +112,13 @@ func (request *Request) sendEmail() error {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
+	// Log the request for debugging
+	slog.Debug("Sending email", "sender", request.Configuration.Sender, "url", fmt.Sprintf("https://graph.microsoft.com/v1.0/users/%s/sendMail", request.Configuration.Sender))
+
 	// Send the email via Graph API
 	userEmail := request.Configuration.Sender
-	url := fmt.Sprintf("https://graph.microsoft.com/v1.0/users/%s/sendMail", userEmail)
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	apiURL := fmt.Sprintf("https://graph.microsoft.com/v1.0/users/%s/sendMail", userEmail)
+	req, err := http.NewRequest(http.MethodPost, apiURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -120,7 +131,7 @@ func (request *Request) sendEmail() error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("failed to send email: status %d, body: %s", resp.StatusCode, string(body))
 	}
