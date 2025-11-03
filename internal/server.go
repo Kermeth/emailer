@@ -1,9 +1,10 @@
 package internal
 
 import (
+	"net/http"
+
 	"github.com/kermeth/emailer/internal/health"
 	"github.com/kermeth/emailer/internal/send"
-	"net/http"
 )
 
 func NewServer() http.Handler {
