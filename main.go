@@ -2,9 +2,10 @@ package main
 
 import (
 	"errors"
-	"github.com/kermeth/emailer/internal"
 	"log/slog"
 	"net/http"
+
+	"github.com/kermeth/emailer/internal"
 )
 
 func main() {
