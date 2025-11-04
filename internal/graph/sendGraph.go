@@ -1,18 +1,19 @@
 package graph
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 
 	"context"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	azidentity "github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/kermeth/emailer/internal/send"
+	abstractions "github.com/microsoft/kiota-abstractions-go"
+	msgraphsdk "github.com/microsoftgraph/msgraph-sdk-go"
+	"github.com/microsoftgraph/msgraph-sdk-go/models"
+	"github.com/microsoftgraph/msgraph-sdk-go/users"
 )
 
 type Request struct {
@@ -29,7 +30,7 @@ type Config struct {
 	TenantId string `json:"tenantId"`
 	AppId    string `json:"appId"`
 	Secret   string `json:"secret"`
-	Sender   string `json:"sender"`
+	From     string `json:"from"`
 }
 
 func Handler(writer http.ResponseWriter, request *http.Request) {
@@ -70,97 +71,105 @@ func (request *Request) sendEmail() error {
 		return fmt.Errorf("failed to create credential: %w", err)
 	}
 
-	// Get access token for Microsoft Graph
-	token, err := cred.GetToken(context.Background(), policy.TokenRequestOptions{
-		Scopes: []string{"https://graph.microsoft.com/.default"},
+	// Create Graph client
+	client, err := msgraphsdk.NewGraphServiceClientWithCredentials(cred, []string{
+		"https://graph.microsoft.com/.default",
 	})
 	if err != nil {
-		return fmt.Errorf("failed to get token: %w", err)
+		return fmt.Errorf("failed to create graph client: %w", err)
 	}
 
-	// Build the email message
-	message := map[string]interface{}{
-		"message": map[string]interface{}{
-			"subject": request.Subject,
-			"body": map[string]string{
-				"contentType": "HTML",
-				"content":     request.Body,
-			},
-			"toRecipients": buildRecipients(request.To),
-		},
-		"saveToSentItems": true,
-	}
+	// Build message
+	message := models.NewMessage()
+	subject := request.Subject
+	message.SetSubject(&subject)
 
-	// Add CC recipients if present
+	// Set body
+	body := models.NewItemBody()
+	bodyContent := request.Body
+	body.SetContent(&bodyContent)
+	contentType := models.HTML_BODYTYPE
+	body.SetContentType(&contentType)
+	message.SetBody(body)
+
+	// Set recipients
+	message.SetToRecipients(buildGraphRecipients(request.To))
+
 	if len(request.Cc) > 0 {
-		message["message"].(map[string]interface{})["ccRecipients"] = buildRecipients(request.Cc)
+		message.SetCcRecipients(buildGraphRecipients(request.Cc))
 	}
 
-	// Add BCC recipients if present
 	if len(request.Bcc) > 0 {
-		message["message"].(map[string]interface{})["bccRecipients"] = buildRecipients(request.Bcc)
+		message.SetBccRecipients(buildGraphRecipients(request.Bcc))
 	}
 
 	// Add attachments if present
 	if len(request.Attachments) > 0 {
-		message["message"].(map[string]interface{})["attachments"] = buildAttachments(request.Attachments)
+		message.SetAttachments(buildGraphAttachments(request.Attachments))
 	}
 
-	// Convert to JSON
-	jsonData, err := json.Marshal(message)
+	// Create send mail request body
+	sendMailBody := users.NewItemSendMailPostRequestBody()
+	sendMailBody.SetMessage(message)
+	saveToSentItems := true
+	sendMailBody.SetSaveToSentItems(&saveToSentItems)
+
+	// Add request options with logging
+	requestConfig := &users.ItemSendMailRequestBuilderPostRequestConfiguration{
+		Options: []abstractions.RequestOption{},
+	}
+
+	slog.Info("Attempting to send email",
+		"sender", request.Configuration.From,
+		"recipients", request.To,
+		"subject", request.Subject)
+
+	// Send the email
+	err = client.Users().
+		ByUserId(request.Configuration.From).
+		SendMail().
+		Post(context.Background(), sendMailBody, requestConfig)
+
 	if err != nil {
-		return fmt.Errorf("failed to marshal message: %w", err)
+		// Try to extract more error details
+		slog.Error("Graph API error details",
+			"error", err.Error(),
+			"sender", request.Configuration.From,
+			"type", fmt.Sprintf("%T", err))
+		return fmt.Errorf("failed to send email: %w", err)
 	}
 
-	// Log the request for debugging
-	slog.Debug("Sending email", "sender", request.Configuration.Sender, "url", fmt.Sprintf("https://graph.microsoft.com/v1.0/users/%s/sendMail", request.Configuration.Sender))
-
-	// Send the email via Graph API
-	userEmail := request.Configuration.Sender
-	apiURL := fmt.Sprintf("https://graph.microsoft.com/v1.0/users/%s/sendMail", userEmail)
-	req, err := http.NewRequest(http.MethodPost, apiURL, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+token.Token)
-	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to send email: status %d, body: %s", resp.StatusCode, string(body))
-	}
-
+	slog.Info("Email sent successfully via Graph API")
 	return nil
 }
 
-func buildRecipients(emails []string) []map[string]interface{} {
-	recipients := make([]map[string]interface{}, 0, len(emails))
+func buildGraphRecipients(emails []string) []models.Recipientable {
+	recipients := make([]models.Recipientable, 0, len(emails))
 	for _, email := range emails {
 		if email != "" {
-			recipients = append(recipients, map[string]interface{}{
-				"emailAddress": map[string]string{
-					"address": email,
-				},
-			})
+			recipient := models.NewRecipient()
+			emailAddress := models.NewEmailAddress()
+			emailAddr := email
+			emailAddress.SetAddress(&emailAddr)
+			recipient.SetEmailAddress(emailAddress)
+			recipients = append(recipients, recipient)
 		}
 	}
 	return recipients
 }
 
-func buildAttachments(attachments []send.Attachment) []map[string]interface{} {
-	result := make([]map[string]interface{}, 0, len(attachments))
+func buildGraphAttachments(attachments []send.Attachment) []models.Attachmentable {
+	result := make([]models.Attachmentable, 0, len(attachments))
 	for _, att := range attachments {
-		result = append(result, map[string]interface{}{
-			"@odata.type":  "#microsoft.graph.fileAttachment",
-			"name":         att.Name,
-			"contentBytes": att.Data, // Should be base64 encoded
-		})
+		attachment := models.NewFileAttachment()
+		name := att.Name
+		attachment.SetName(&name)
+
+		// The Data field should already be base64 encoded
+		contentBytes := []byte(att.Data)
+		attachment.SetContentBytes(contentBytes)
+
+		result = append(result, attachment)
 	}
 	return result
 }
