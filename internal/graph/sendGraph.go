@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -166,7 +167,13 @@ func buildGraphAttachments(attachments []send.Attachment) []models.Attachmentabl
 		attachment.SetName(&name)
 
 		// The Data field should already be base64 encoded
-		contentBytes := []byte(att.Data)
+		// The SDK expects raw bytes and handles the encoding itself, so we must decode the input first
+		contentBytes, err := base64.StdEncoding.DecodeString(att.Data)
+		if err != nil {
+			slog.Error("failed to decode attachment data", "name", name, "error", err)
+			// Fallback to raw data if decoding fails
+			contentBytes = []byte(att.Data)
+		}
 		attachment.SetContentBytes(contentBytes)
 
 		result = append(result, attachment)
